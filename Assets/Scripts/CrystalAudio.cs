@@ -1,141 +1,63 @@
-﻿using UnityEngine;
-
+using UnityEngine;
 [System.Serializable]
 public class AudioLayer
 {
     public AudioSource source;
-    public float targetVolume = 1f;
-    public float fadeSpeed = 2f;
-
-    [HideInInspector] public float currentVolume = 0f;
+    [Range(0f,1f)] public float targetVolume = 0.25f;
+    public float fadeSpeed = 1f;
+    [HideInInspector] public float currentVolume;
 }
-
 public class CrystalAudio : MonoBehaviour
 {
-    [Header("References")]
     public CrystalDrive drive;
-
-    [Header("Thresholds")]
-    [Range(0f, 1f)] public float warningThreshold = 0.85f;
-    [Range(0f, 1f)] public float warningResetThreshold = 0.8f; // hysteresis
-
-    [Header("Audio Layers")]
-    public AudioLayer idealLayer;
-    public AudioLayer warningLayer;
-    public AudioLayer mpsLayer;
-
-    [Header("One-shot Sounds")]
+    [Range(0f,1f)] public float warningThreshold = 0.65f, warningResetThreshold = 0.5f;
+    public AudioLayer idealLayer = new AudioLayer(), warningLayer = new AudioLayer(), mpsLayer = new AudioLayer();
     public AudioSource lockSound;
-
-    [Header("MPS Settings")]
-    public float minPitch = 0.5f;
-    public float maxPitch = 2f;
-    public float maxRPM = 1500f;
-
-    private bool previousCrystalActive;
-    private bool isWarningActive;
-
-    void Start()
+    public float minPitch = 0.6f, maxPitch = 1.6f, maxRPM = 1200f;
+    private AudioSource oneShots;
+    private bool warning;
+    private float mpsPitchOverride = -1f;
+    private void Awake()
     {
-        InitLayer(idealLayer);
-        InitLayer(warningLayer);
-        InitLayer(mpsLayer);
+        oneShots = gameObject.AddComponent<AudioSource>();
+        oneShots.playOnAwake = false; oneShots.spatialBlend = 0f;
     }
-
-    void Update()
+    private void OnEnable() { if (drive != null) drive.LockChanged += OnLock; }
+    private void OnDisable() { if (drive != null) drive.LockChanged -= OnLock; }
+    private void OnLock(bool locked) { if (lockSound != null && drive.ControlsEnabled) lockSound.Play(); }
+    private void Start() { Init(idealLayer); Init(warningLayer); Init(mpsLayer); }
+    private void Init(AudioLayer layer)
+    {
+        if (layer?.source == null) return;
+        layer.source.loop = true; layer.source.volume = layer.currentVolume = 0f;
+        if (layer.source.clip != null) layer.source.Play();
+    }
+    private void Update()
     {
         if (drive == null) return;
-
-        HandleLock();
-        UpdateStates();
-        UpdateAudio();
+        if (drive.instability >= warningThreshold * 100f || drive.IsPistonOverPressure()) warning = true;
+        else if (drive.instability <= warningResetThreshold * 100f && !drive.IsPistonOverPressure()) warning = false;
+        bool operating = drive.ControlsEnabled;
+        Fade(idealLayer, operating && drive.crystalActive && !warning);
+        Fade(warningLayer, operating && warning);
+        Fade(mpsLayer, operating && drive.crystalActive && drive.mpsRPM > 0f);
+        if (mpsLayer?.source != null)
+            mpsLayer.source.pitch = mpsPitchOverride >= 0f ? mpsPitchOverride : Mathf.Lerp(minPitch,maxPitch,Mathf.Clamp01(drive.mpsRPM/Mathf.Max(1f,maxRPM)));
     }
-
-    void InitLayer(AudioLayer layer)
+    private void Fade(AudioLayer layer, bool active)
     {
-        if (layer.source == null) return;
-        layer.source.loop = true;
-        layer.source.volume = 0f;
-        layer.currentVolume = 0f;
-        layer.source.Play();
-    }
-
-    void HandleLock()
-    {
-        if (drive.crystalActive && !previousCrystalActive)
-        {
-            if (lockSound != null) lockSound.Play();
-        }
-        previousCrystalActive = drive.crystalActive;
-    }
-
-    void UpdateStates()
-{
-    float piston = drive.pistonPressure; // 0..100
-
-    float warningStart = drive.GetMaxSafePressure();   // = pistonMaxActive
-    float warningEnd = warningStart - 5f;              // гистерезис
-
-    if (!isWarningActive && piston >= warningStart)
-        isWarningActive = true;
-    else if (isWarningActive && piston <= warningEnd)
-        isWarningActive = false;
-}
-
-    void UpdateAudio()
-    {
-        bool ideal = drive.crystalActive && drive.IsPistonInIdealZone() && !isWarningActive;
-        bool warning = isWarningActive;
-        bool mps = drive.crystalActive && drive.mpsRPM > 0;
-
-        // PRIORITY: warning > ideal
-        if (warning)
-        {
-            SetLayer(warningLayer, true);
-            SetLayer(idealLayer, false);
-        }
-        else
-        {
-            SetLayer(warningLayer, false);
-            SetLayer(idealLayer, ideal);
-        }
-
-        SetLayer(mpsLayer, mps);
-
-        UpdateMpsPitch();
-
-        // Apply smooth fade
-        ApplyFade(idealLayer);
-        ApplyFade(warningLayer);
-        ApplyFade(mpsLayer);
-    }
-
-    void SetLayer(AudioLayer layer, bool active)
-    {
-        if (layer.source == null) return;
-        layer.targetVolume = active ? 1f : 0f;
-    }
-
-    void ApplyFade(AudioLayer layer)
-    {
-        if (layer.source == null) return;
-
-        layer.currentVolume = Mathf.MoveTowards(
-            layer.currentVolume,
-            layer.targetVolume,
-            layer.fadeSpeed * Time.deltaTime
-        );
-
+        if (layer?.source == null) return;
+        layer.currentVolume = Mathf.MoveTowards(layer.currentVolume, active ? Mathf.Clamp01(layer.targetVolume) : 0f, Mathf.Max(0f,layer.fadeSpeed)*Time.unscaledDeltaTime);
         layer.source.volume = layer.currentVolume;
     }
-
-    void UpdateMpsPitch()
+    public void PlayOneShot(AudioClip clip,float volume=1f) { if (clip != null && oneShots != null) oneShots.PlayOneShot(clip,Mathf.Clamp01(volume)); }
+    public void SetLayerVolume(string layerName,float volume)
     {
-        if (mpsLayer.source == null) return;
-
-        float t = Mathf.Clamp01(drive.mpsRPM / maxRPM);
-        float pitch = Mathf.Lerp(minPitch, maxPitch, t);
-
-        mpsLayer.source.pitch = pitch;
+        var layer = layerName?.ToLowerInvariant() switch { "ideal"=>idealLayer, "warning"=>warningLayer, "mps"=>mpsLayer, _=>null };
+        if (layer != null) layer.targetVolume = Mathf.Clamp01(volume);
     }
+    public void SetMpsPitch(float pitch) => mpsPitchOverride = Mathf.Clamp(pitch,0.1f,3f);
+    public void ResetMpsPitch() { mpsPitchOverride=-1f; warning=false; }
+    private void OnValidate() { warningResetThreshold=Mathf.Clamp(warningResetThreshold,0f,warningThreshold); maxRPM=Mathf.Max(1f,maxRPM); }
 }
+

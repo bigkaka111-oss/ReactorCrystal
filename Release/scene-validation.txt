@@ -1,0 +1,11 @@
+Scene: Assets/Scenes/SampleScene.unity
+Missing scripts: 0
+Camera controllers: 1
+Presentation refs valid: True
+Audio refs valid: True
+Result cues valid: True
+Failure effect valid: True
+Lever MpsDepth drive=True collider=True
+Lever RPM drive=True collider=True
+Lever Pistons drive=True collider=True
+Lever MzsDepth drive=True collider=True

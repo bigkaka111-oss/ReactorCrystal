@@ -1,0 +1,11 @@
+PASS | Pause freezes simulation
+PASS | Resume button wiring
+PASS | Lock at legal pressure
+PASS | Live unlock has no jump
+PASS | Physical emergency button clears controls
+PASS | Audio base volume persists across Update
+PASS | Left view keeps horizon level
+PASS | Failure opens terminal result
+PASS | Failure spawns assigned visual effect
+PASS | New shift clears failed session
+PASS | Restart clears old failure effect

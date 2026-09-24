@@ -1,0 +1,19 @@
+{
+  "status": "completed",
+  "buildId": "build_1307f5f62b4d",
+  "result": "Succeeded",
+  "platform": "StandaloneWindows64",
+  "outputPath": "S:/UnityGames/My project/Builds/Contour-Windows/Contour.exe",
+  "totalSizeBytes": 113556018,
+  "buildTimeMs": 201844,
+  "buildStartedAt": "2026-09-24T14:28:52.2761607Z",
+  "buildEndedAt": "2026-09-24T14:32:14.1207136Z",
+  "totalWarnings": 1,
+  "totalErrors": 0,
+  "errors": [],
+  "warnings": [
+    {
+      "message": "Pipeline: No RuntimePipelineConfig asset found (Project Settings > Pipeline > Runtime). Pipeline will be disabled in Player builds."
+    }
+  ]
+}

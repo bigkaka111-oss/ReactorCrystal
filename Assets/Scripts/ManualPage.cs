@@ -1,78 +1,36 @@
-﻿using UnityEngine;
-
+using UnityEngine;
 public class ManualPage : MonoBehaviour
 {
-    [Header("Настройки камеры")]
     public Camera mainCamera;
     public Collider pageCollider;
-
-    [Header("Позиция на столе (когда лежит)")]
-    public Vector3 restPosition;
-    public Vector3 restRotation;
-
-    [Header("Позиция перед глазами (когда нажали)")]
-    public Vector3 viewPosition;
-    public Vector3 viewRotation;
-
-    [Header("Скорость движения")]
-    public float speed = 10f;
-
-    private bool isHeld = false;
-
-    void Start()
+    public Vector3 restPosition,restRotation,viewPosition,viewRotation;
+    public float speed=10f;
+    private bool isHeld;
+    private Vector3 cameraOffset;
+    private Quaternion cameraRotation;
+    private void Start()
     {
-        if (mainCamera == null) mainCamera = Camera.main;
-
-        // Сразу кладем листок в начальную позицию
-        transform.position = restPosition;
-        transform.eulerAngles = restRotation;
-    }
-
-    void Update()
-    {
-        // 1. Проверка клика
-        if (Input.GetMouseButtonDown(0))
+        if(mainCamera==null)mainCamera=Camera.main;
+        transform.SetPositionAndRotation(restPosition,Quaternion.Euler(restRotation));
+        if(mainCamera!=null)
         {
-            if (IsMouseOver()) isHeld = true;
-        }
-
-        // 2. Проверка отпускания кнопки
-        if (Input.GetMouseButtonUp(0))
-        {
-            isHeld = false;
-        }
-
-        // 3. Движение
-        if (isHeld)
-        {
-            // Летим к позиции перед глазами
-            MoveTowards(viewPosition, viewRotation);
-        }
-        else
-        {
-            // Возвращаемся на стол
-            MoveTowards(restPosition, restRotation);
+            cameraOffset=mainCamera.transform.InverseTransformPoint(viewPosition);
+            cameraRotation=Quaternion.Inverse(mainCamera.transform.rotation)*Quaternion.Euler(viewRotation);
         }
     }
-
-    // Метод для плавного перемещения и вращения
-    void MoveTowards(Vector3 targetPos, Vector3 targetRot)
+    private void Update()
     {
-        transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * speed);
-
-        // Плавный поворот через углы Эйлера
-        Quaternion targetQuaternion = Quaternion.Euler(targetRot);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetQuaternion, Time.deltaTime * speed);
-    }
-
-    // Проверка: наведена ли мышь на листок
-    bool IsMouseOver()
-    {
-        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-        if (Physics.Raycast(ray, out RaycastHit hit))
+        if(Time.timeScale<=0f || !Input.GetMouseButton(0))isHeld=false;
+        if(!WorldInteraction.Blocked&&Input.GetMouseButtonDown(0)&&mainCamera!=null&&pageCollider!=null)
         {
-            return hit.collider == pageCollider;
+            if(Physics.Raycast(mainCamera.ScreenPointToRay(Input.mousePosition),out var hit)&&hit.collider==pageCollider)isHeld=true;
         }
-        return false;
+        var pos=isHeld&&mainCamera!=null?mainCamera.transform.TransformPoint(cameraOffset):restPosition;
+        var rot=isHeld&&mainCamera!=null?mainCamera.transform.rotation*cameraRotation:Quaternion.Euler(restRotation);
+        float t=1f-Mathf.Exp(-speed*Time.unscaledDeltaTime);
+        transform.position=Vector3.Lerp(transform.position,pos,t);
+        transform.rotation=Quaternion.Slerp(transform.rotation,rot,t);
     }
+    private void OnApplicationFocus(bool focus) { if(!focus)isHeld=false; }
 }
+

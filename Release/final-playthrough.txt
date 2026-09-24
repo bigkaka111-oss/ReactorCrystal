@@ -1,0 +1,3 @@
+State=Completed
+Elapsed=75,78419
+Instability=73,06922

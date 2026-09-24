@@ -1,0 +1,2 @@
+PASS | Cube hover changes/restores _BaseColor
+PASS | Cube (2) hover changes/restores _BaseColor

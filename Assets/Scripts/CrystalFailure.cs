@@ -1,62 +1,34 @@
-﻿using UnityEngine;
-using UnityEngine.SceneManagement; // Для перезагрузки
-using System.Collections;
+using UnityEngine;
 
 public class CrystalFailure : MonoBehaviour
 {
     public CrystalDrive drive;
-
-    [Header("Параметры проигрыша")]
-    // Сделано <=100 чтобы соответствовать Clamp в Drive (0..100).
-    public float failureThreshold = 100f;
-
-    [Header("Эффекты")]
-    public GameObject explosionEffect; // Сюда можно кинуть Particle System
-
-    private bool isDead = false;
-
-    void Start()
+    public GameObject explosionEffect;
+    public Transform effectOrigin;
+    private GameObject activeEffect;
+    private QuestSystem quest;
+    private void OnEnable()
     {
-        if (drive == null)
-        {
-            Debug.LogWarning($"[CrystalFailure] Поле drive не назначено на '{name}'. Отключаю компонент.");
-            enabled = false;
-            return;
-        }
+        quest = FindFirstObjectByType<QuestSystem>();
+        if (quest != null) { quest.OnQuestFailed += ShowFailure; quest.OnStateChanged += OnState; }
     }
-
-    void Update()
+    private void OnDisable()
     {
-        if (isDead || drive == null) return;
-
-        if (drive.instability >= failureThreshold)
-        {
-            TriggerExplosion();
-        }
+        if (quest != null) { quest.OnQuestFailed -= ShowFailure; quest.OnStateChanged -= OnState; }
+        if (activeEffect != null) Destroy(activeEffect);
     }
-
-    void TriggerExplosion()
+    private void OnState(QuestSystem.SessionState state)
     {
-        if (isDead) return;
-        isDead = true;
-
-        Debug.LogError("КРИТИЧЕСКАЯ НЕСТАБИЛЬНОСТЬ! ВЗРЫВ!");
-
+        if (state == QuestSystem.SessionState.Ready && activeEffect != null) Destroy(activeEffect);
+    }
+    private void ShowFailure()
+    {
         if (explosionEffect != null && drive != null)
         {
-            Instantiate(explosionEffect, drive.transform.position, Quaternion.identity);
+            activeEffect = Instantiate(explosionEffect, effectOrigin != null ? effectOrigin.position : drive.transform.position, Quaternion.identity);
+            Destroy(activeEffect, 6f);
         }
-
-        // Отключаем компонент, чтобы дальнейшие Update/Invoke не сработали
-        enabled = false;
-
-        // Используем Coroutine вместо Invoke — более контролируемо
-        StartCoroutine(RestartLevelAfterDelay(5f));
-    }
-
-    IEnumerator RestartLevelAfterDelay(float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        // The result screen owns restart; a normal loss is not an error.
     }
 }
+

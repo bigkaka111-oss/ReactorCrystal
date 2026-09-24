@@ -1,101 +1,68 @@
-﻿using UnityEngine;
-
+using UnityEngine;
 public class CrystalLever : MonoBehaviour
 {
     public CrystalDrive drive;
-
     public enum LeverAction { MpsDepth, MzsDepth, Pistons, RPM }
     public LeverAction action;
-
-    [Header("Максимум системы (100 для глубины/поршней, 1200 для RPM)")]
     public float maxValueForSystem = 100f;
-
-    [Header("Ось движения (локальная)")]
     public Vector3 moveAxis = Vector3.forward;
-
-    [Header("Физические границы рычага")]
-    public float minValue = -0.1f;
-    public float maxValue = 0.1f;
-
-    [Header("Чувствительность перетаскивания")]
-    public float sensitivity = 0.001f;
-
-    // ── ПРАВКА: задержка значения.
-    // Рычаг сдвинулся — но значение в CrystalDrive ползёт к цели медленно.
-    // smoothSpeed = 2f: доползает примерно за 1-2 секунды.
-    // Крути в Inspector: 0.5 = очень медленно, 5.0 = почти мгновенно.
-    [Header("Задержка передачи значения")]
-    public float smoothSpeed = 2f;
-
-    // ──────────────────────────────────────
-    private bool isDragging = false;
-    private float dragStartMouse;
-    private float dragStartValue;
+    public float minValue = -0.1f, maxValue = 0.1f, sensitivity = 0.001f, smoothSpeed = 3f;
+    private bool isDragging, initialized;
+    private float dragStartMouse, dragStartValue, targetSystemValue, smoothedSystemValue;
     private Vector3 startLocalPos;
-
-    // Целевое значение (куда сдвинул рычаг) и сглаженное (что реально идёт в Drive)
-    private float targetSystemValue = 0f;
-    private float smoothedSystemValue = 0f;
-
-    void Start()
+    public float TargetValue => targetSystemValue;
+    private bool Locked => action == LeverAction.Pistons && drive != null && drive.pistonLocked;
+    private void Awake() => Initialize();
+    private void Initialize()
     {
-        startLocalPos = transform.localPosition;
-        moveAxis = moveAxis.normalized;
+        if (initialized) return;
+        initialized = true; startLocalPos = transform.localPosition;
+        moveAxis = moveAxis.sqrMagnitude > 0f ? moveAxis.normalized : Vector3.forward;
+        SyncFromDrive();
     }
-
-    void OnMouseDown()
+    private void OnEnable() { if (drive != null) { drive.LockChanged += OnLock; drive.EmergencyStopped += SyncFromDrive; } }
+    private void OnDisable() { isDragging = false; if (drive != null) { drive.LockChanged -= OnLock; drive.EmergencyStopped -= SyncFromDrive; } }
+    private void OnLock(bool value) { if (action == LeverAction.Pistons) SyncFromDrive(); }
+    public void SyncFromDrive()
     {
-        isDragging = true;
-        dragStartMouse = Input.mousePosition.y;
-        dragStartValue = GetCurrentPhysicalValue();
-    }
-
-    void OnMouseUp()
-    {
+        if (!initialized) { Initialize(); return; }
+        if (drive == null) return;
         isDragging = false;
+        targetSystemValue = smoothedSystemValue = action switch {
+            LeverAction.Pistons => drive.pistonPressure, LeverAction.RPM => drive.mpsRPM,
+            LeverAction.MpsDepth => drive.mpsDepth, _ => drive.mzsDepth };
+        UpdatePosition();
     }
-
-    void Update()
+    public void SetTargetValue(float value)
     {
-        if (isDragging)
+        if (drive == null || !drive.ControlsEnabled || Locked) return;
+        targetSystemValue = Mathf.Clamp(value, 0f, maxValueForSystem); UpdatePosition();
+    }
+    private void UpdatePosition() => transform.localPosition = startLocalPos + moveAxis * Mathf.Lerp(minValue, maxValue, targetSystemValue / Mathf.Max(1f, maxValueForSystem));
+    private void OnMouseDown()
+    {
+        if (WorldInteraction.Blocked || drive == null || !drive.ControlsEnabled || Locked) return;
+        isDragging = true; dragStartMouse = Input.mousePosition.y;
+        dragStartValue = Mathf.Lerp(minValue, maxValue, targetSystemValue / Mathf.Max(1f, maxValueForSystem));
+    }
+    private void OnMouseUp() => isDragging = false;
+    private void OnApplicationFocus(bool focus) { if (!focus) isDragging = false; }
+    private void Update()
+    {
+        if (drive == null || !drive.ControlsEnabled || Time.timeScale <= 0f) { isDragging = false; return; }
+        if (Locked) { SyncFromDrive(); return; }
+        if (isDragging && !Input.GetMouseButton(0)) isDragging = false;
+        if (isDragging) SetTargetValue(Mathf.InverseLerp(minValue, maxValue, dragStartValue + (Input.mousePosition.y - dragStartMouse) * sensitivity) * maxValueForSystem);
+        smoothedSystemValue = Mathf.Lerp(smoothedSystemValue, targetSystemValue, 1f - Mathf.Exp(-smoothSpeed * Time.deltaTime));
+        if (Mathf.Abs(smoothedSystemValue - targetSystemValue) < 0.001f) smoothedSystemValue = targetSystemValue;
+        switch (action)
         {
-            float mouseDelta = Input.mousePosition.y - dragStartMouse;
-            float newValue = Mathf.Clamp(
-                dragStartValue + mouseDelta * sensitivity,
-                minValue, maxValue
-            );
-
-            // Двигаем 3D объект рычага сразу — он реагирует на руку мгновенно
-            transform.localPosition = startLocalPos + moveAxis * newValue;
-
-            // Считаем целевое значение для системы (0–maxValueForSystem)
-            float t = Mathf.InverseLerp(minValue, maxValue, newValue);
-            targetSystemValue = t * maxValueForSystem;
-        }
-
-        // Сглаженное значение медленно ползёт к целевому — это и есть "задержка рычага"
-        smoothedSystemValue = Mathf.Lerp(
-            smoothedSystemValue,
-            targetSystemValue,
-            Time.deltaTime * smoothSpeed
-        );
-
-        // Отправляем в CrystalDrive уже сглаженное значение
-        if (drive != null)
-        {
-            switch (action)
-            {
-                case LeverAction.MpsDepth: drive.ChangeMPSDepth(smoothedSystemValue); break;
-                case LeverAction.MzsDepth: drive.ChangeMZSDepth(smoothedSystemValue); break;
-                case LeverAction.Pistons: drive.ChangePistons(smoothedSystemValue); break;
-                case LeverAction.RPM: drive.ChangeRPM(smoothedSystemValue); break;
-            }
+            case LeverAction.MpsDepth: drive.ChangeMPSDepth(smoothedSystemValue); break;
+            case LeverAction.MzsDepth: drive.ChangeMZSDepth(smoothedSystemValue); break;
+            case LeverAction.Pistons: drive.ChangePistons(smoothedSystemValue); break;
+            case LeverAction.RPM: drive.ChangeRPM(smoothedSystemValue); break;
         }
     }
-
-    float GetCurrentPhysicalValue()
-    {
-        Vector3 offset = transform.localPosition - startLocalPos;
-        return Vector3.Dot(offset, moveAxis);
-    }
+    private void OnValidate() { maxValueForSystem = action == LeverAction.RPM ? 1200f : 100f; maxValue = Mathf.Max(minValue + 0.0001f, maxValue); smoothSpeed = Mathf.Max(0.1f, smoothSpeed); }
 }
+

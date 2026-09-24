@@ -1,0 +1,5 @@
+Process: Contour
+Responding: True
+Graphics: Direct3D 12 / RTX 2060
+Managed startup errors found: False
+Scope: standalone graphical startup smoke test; full gameplay was tested in Unity Play Mode through MCP.

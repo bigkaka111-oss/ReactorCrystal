@@ -1,0 +1,15 @@
+PASS | Known current and stabilizer response
+PASS | Pressure boundaries and RPM clamp
+PASS | Failure wins a simultaneous completion and is terminal
+PASS | Victory is terminal and ignores later failure
+PASS | Stop does not auto-start
+PASS | Reset restores the entire initial contract
+PASS | Locked lever rejects hidden target; unlock has no jump
+PASS | Emergency stop preserves stage and cools in seconds
+PASS | Progress burns outside range and inactive current cannot advance
+METRIC | 30 Hz | 77,07 s | risk 72,89
+PASS | Full legal five-stage simulation at 30 Hz
+METRIC | 60 Hz | 77,17 s | risk 72,97
+PASS | Full legal five-stage simulation at 60 Hz
+METRIC | 120 Hz | 77,18 s | risk 72,96
+PASS | Full legal five-stage simulation at 120 Hz
